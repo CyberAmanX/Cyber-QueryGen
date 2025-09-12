@@ -279,8 +279,9 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Dynamic Forms for Each Tool"
-    - "Real-time Query Preview"
+    - "Advanced Incident Workflow API"
+    - "IOC Enrichment API"
+    - "Correlation Query API"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -290,3 +291,5 @@ agent_communication:
     message: "Initial implementation complete. Built comprehensive CyberQueryMaker with all 7 tools (Wireshark, Nmap, Splunk, Wazuh, YARA, Suricata, Elasticsearch). All backend APIs and frontend components implemented. Ready for comprehensive testing of query generation functionality, template management, and UI interactions."
   - agent: "testing"
     message: "BACKEND TESTING COMPLETED SUCCESSFULLY: Comprehensive testing of all backend APIs completed with 100% success rate (38/38 tests passed). All 7 cybersecurity tools query generation working perfectly. Template management (save/retrieve/delete) fully functional. Knowledge base comprehensive with complete documentation. Error handling proper. Health check endpoint working. Backend is production-ready. Created comprehensive backend_test.py for future regression testing."
+  - agent: "testing"
+    message: "ADVANCED INVESTIGATION FEATURES TESTING COMPLETED: Comprehensive testing of all new advanced endpoints completed with 100% success rate (51/51 tests passed). Advanced Incident Workflows tested for 3 major incident types with proper multi-step investigation flows. IOC Enrichment tested for hash, IP, and domain IOCs with multi-tool query generation. Correlation Queries tested for host, user, and IP-based correlations across multiple tools. Incident Types endpoint working perfectly. Fixed minor data type issues in correlation response model and added IOC type validation. All advanced investigation capabilities are production-ready and provide real value to security analysts."
