@@ -262,6 +262,11 @@ class AdvancedInvestigationEngine:
     def generate_ioc_enrichment_queries(ioc_type: str, ioc_value: str, focus: str = "general") -> Dict[str, Any]:
         """Generate queries for IOC enrichment across multiple tools"""
         
+        # Validate IOC type
+        valid_ioc_types = ["hash", "ip", "domain", "url"]
+        if ioc_type not in valid_ioc_types:
+            raise ValueError(f"Unsupported IOC type: {ioc_type}. Supported types: {valid_ioc_types}")
+        
         queries = {}
         steps = []
         recommendations = []
