@@ -476,11 +476,11 @@ index=network_traffic src_ip="{parameters.get('ip', '*')}" OR dest_ip="{paramete
             explanation = f"Time-based correlation analysis"
         
         return {
-            "correlation_type": f"{primary_tool}_to_{secondary_tools}",
+            "correlation_type": f"{primary_tool}_to_{','.join(secondary_tools)}",
             "correlated_queries": {
                 "correlation_query": correlation_query,
                 "primary_tool": primary_tool,
-                "secondary_tools": secondary_tools
+                "secondary_tools": ','.join(secondary_tools)
             },
             "join_logic": f"JOIN ON {correlation_field}",
             "explanation": explanation
