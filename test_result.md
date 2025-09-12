@@ -150,6 +150,66 @@ backend:
         agent: "testing"
         comment: "KNOWLEDGE BASE COMPREHENSIVE: All 7 tools (Wireshark, Nmap, Splunk, Wazuh, YARA, Suricata, Elasticsearch) fully documented with complete information including name, description, official_docs links, examples (2-3 per tool), and field specifications. Documentation structure is consistent and comprehensive for all tools."
 
+  - task: "Advanced Incident Workflow API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/incident-workflow endpoint for generating comprehensive investigation workflows for different incident types including malware_infection, unauthorized_access, data_exfiltration, privilege_escalation, and lateral_movement"
+      - working: true
+        agent: "testing"
+        comment: "ADVANCED INCIDENT WORKFLOWS FULLY FUNCTIONAL: Successfully tested all 3 major incident types (malware_infection with 5 steps, unauthorized_access with 4 steps, data_exfiltration with 4 steps). Each workflow generates context-aware queries for appropriate tools (YARA, Splunk, Wazuh, Wireshark, Suricata, Elasticsearch). Workflow structure includes proper step sequencing, tool selection, and investigation timeline. Custom IOCs integration working correctly."
+
+  - task: "IOC Enrichment API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/ioc-enrichment endpoint for enriching IOCs (hash, IP, domain) and generating multi-tool investigation queries with investigation steps and recommendations"
+      - working: true
+        agent: "testing"
+        comment: "IOC ENRICHMENT COMPREHENSIVE: Successfully tested all 3 IOC types (hash, IP, domain). Hash IOC generates queries for 4 tools (YARA, Splunk, Wazuh, Elasticsearch) with 4 investigation steps. IP IOC generates queries for 4 tools (Wireshark, Splunk, Suricata, Elasticsearch) with 4 steps. Domain IOC generates queries for 3 tools (Wireshark, Splunk, Suricata) with 3 steps. All IOC values properly integrated into generated queries with relevant investigation recommendations."
+
+  - task: "Correlation Query API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented POST /api/correlation endpoint for generating correlation queries between multiple security tools based on host, user, IP, and time correlation fields"
+      - working: true
+        agent: "testing"
+        comment: "CORRELATION QUERIES WORKING PERFECTLY: Successfully tested all 4 correlation scenarios (host-based Splunk+Wazuh, user-based correlation, IP-based correlation, Wazuh+Elasticsearch correlation). All correlation queries properly generated with appropriate JOIN logic and field correlation. Fixed data type issue in response model. Correlation explanations and join logic properly provided."
+
+  - task: "Incident Types Endpoint"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented GET /api/incident-types endpoint to retrieve available incident types for investigation workflows"
+      - working: true
+        agent: "testing"
+        comment: "INCIDENT TYPES ENDPOINT FUNCTIONAL: Successfully retrieved all 5 incident types (malware_infection, unauthorized_access, data_exfiltration, privilege_escalation, lateral_movement) with proper structure including type, name, description, and step count. All incident types have valid metadata and workflow information."
+
 frontend:
   - task: "Tool Selection Interface"
     implemented: true
