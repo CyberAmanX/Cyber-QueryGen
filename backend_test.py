@@ -1004,6 +1004,14 @@ class CyberQueryMakerTester:
         print("-" * 50)
         self.test_knowledge_base()
         
+        # Test advanced investigation features
+        print("🔬 TESTING ADVANCED INVESTIGATION FEATURES")
+        print("-" * 50)
+        self.test_advanced_incident_workflows()
+        self.test_ioc_enrichment()
+        self.test_correlation_queries()
+        self.test_incident_types_endpoint()
+        
         # Test error handling
         print("⚠️  TESTING ERROR HANDLING")
         print("-" * 50)
