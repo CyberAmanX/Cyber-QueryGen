@@ -605,6 +605,306 @@ class CyberQueryMakerTester:
         except Exception as e:
             self.log_test("Knowledge Base", False, f"Exception: {str(e)}")
     
+    def test_advanced_incident_workflows(self):
+        """Test advanced incident workflow generation"""
+        
+        test_cases = [
+            {
+                "name": "Malware Infection Investigation",
+                "params": {
+                    "incident_type": "malware_infection",
+                    "context": {
+                        "suspicious_process": "malware.exe",
+                        "suspicious_ip": "192.168.1.100",
+                        "suspicious_domain": "malicious.com"
+                    },
+                    "custom_iocs": [
+                        {"type": "hash", "value": "d41d8cd98f00b204e9800998ecf8427e"}
+                    ]
+                },
+                "expected_workflow_steps": 5,
+                "expected_tools": ["yara", "splunk", "wazuh", "wireshark", "suricata", "elasticsearch"]
+            },
+            {
+                "name": "Unauthorized Access Investigation",
+                "params": {
+                    "incident_type": "unauthorized_access",
+                    "context": {
+                        "suspicious_user": "admin_fake",
+                        "source_ip": "10.0.0.50"
+                    }
+                },
+                "expected_workflow_steps": 4,
+                "expected_tools": ["splunk", "wazuh", "elasticsearch"]
+            },
+            {
+                "name": "Data Exfiltration Investigation",
+                "params": {
+                    "incident_type": "data_exfiltration",
+                    "context": {
+                        "suspicious_ip": "203.0.113.10",
+                        "data_volume_threshold": "100MB"
+                    }
+                },
+                "expected_workflow_steps": 4,
+                "expected_tools": ["wireshark", "splunk", "suricata", "elasticsearch", "wazuh"]
+            }
+        ]
+        
+        for case in test_cases:
+            try:
+                response = self.session.post(f"{BACKEND_URL}/incident-workflow", json=case["params"])
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Validate response structure
+                    required_fields = ['incident_type', 'workflow_steps', 'queries', 'timeline']
+                    if all(field in data for field in required_fields):
+                        
+                        # Check workflow steps count
+                        if len(data['workflow_steps']) == case['expected_workflow_steps']:
+                            
+                            # Check if queries are generated for each step
+                            queries_valid = True
+                            for step_key, step_queries in data['queries'].items():
+                                if not isinstance(step_queries, list) or len(step_queries) == 0:
+                                    queries_valid = False
+                                    break
+                                
+                                # Check if each query has required fields
+                                for query in step_queries:
+                                    if not all(field in query for field in ['tool', 'query', 'description']):
+                                        queries_valid = False
+                                        break
+                            
+                            if queries_valid:
+                                self.log_test(f"Incident Workflow - {case['name']}", True, 
+                                            f"Generated {len(data['workflow_steps'])} steps with valid queries")
+                            else:
+                                self.log_test(f"Incident Workflow - {case['name']}", False, 
+                                            "Invalid query structure in workflow")
+                        else:
+                            self.log_test(f"Incident Workflow - {case['name']}", False, 
+                                        f"Expected {case['expected_workflow_steps']} steps, got {len(data['workflow_steps'])}")
+                    else:
+                        self.log_test(f"Incident Workflow - {case['name']}", False, 
+                                    f"Missing required fields: {[f for f in required_fields if f not in data]}")
+                else:
+                    self.log_test(f"Incident Workflow - {case['name']}", False, 
+                                f"HTTP {response.status_code}", response.text)
+            except Exception as e:
+                self.log_test(f"Incident Workflow - {case['name']}", False, f"Exception: {str(e)}")
+    
+    def test_ioc_enrichment(self):
+        """Test IOC enrichment functionality"""
+        
+        test_cases = [
+            {
+                "name": "Hash IOC Enrichment",
+                "params": {
+                    "ioc_type": "hash",
+                    "ioc_value": "d41d8cd98f00b204e9800998ecf8427e",
+                    "investigation_focus": "malware"
+                },
+                "expected_tools": ["yara", "splunk", "wazuh", "elasticsearch"]
+            },
+            {
+                "name": "IP Address IOC Enrichment",
+                "params": {
+                    "ioc_type": "ip",
+                    "ioc_value": "192.168.1.100",
+                    "investigation_focus": "network"
+                },
+                "expected_tools": ["wireshark", "splunk", "suricata", "elasticsearch"]
+            },
+            {
+                "name": "Domain IOC Enrichment",
+                "params": {
+                    "ioc_type": "domain",
+                    "ioc_value": "malicious.example.com",
+                    "investigation_focus": "general"
+                },
+                "expected_tools": ["wireshark", "splunk", "suricata"]
+            }
+        ]
+        
+        for case in test_cases:
+            try:
+                response = self.session.post(f"{BACKEND_URL}/ioc-enrichment", json=case["params"])
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Validate response structure
+                    required_fields = ['ioc_type', 'ioc_value', 'generated_queries', 'investigation_steps', 'recommendations']
+                    if all(field in data for field in required_fields):
+                        
+                        # Check if queries are generated for expected tools
+                        generated_queries = data['generated_queries']
+                        tools_with_queries = set(generated_queries.keys())
+                        expected_tools = set(case['expected_tools'])
+                        
+                        if tools_with_queries.intersection(expected_tools):
+                            # Check if investigation steps are provided
+                            if len(data['investigation_steps']) > 0 and len(data['recommendations']) > 0:
+                                
+                                # Validate that queries contain the IOC value
+                                ioc_in_queries = any(case['params']['ioc_value'] in query 
+                                                   for query in generated_queries.values())
+                                
+                                if ioc_in_queries:
+                                    self.log_test(f"IOC Enrichment - {case['name']}", True, 
+                                                f"Generated queries for {len(generated_queries)} tools with {len(data['investigation_steps'])} steps")
+                                else:
+                                    self.log_test(f"IOC Enrichment - {case['name']}", False, 
+                                                "IOC value not found in generated queries")
+                            else:
+                                self.log_test(f"IOC Enrichment - {case['name']}", False, 
+                                            "Missing investigation steps or recommendations")
+                        else:
+                            self.log_test(f"IOC Enrichment - {case['name']}", False, 
+                                        f"No queries generated for expected tools: {expected_tools}")
+                    else:
+                        self.log_test(f"IOC Enrichment - {case['name']}", False, 
+                                    f"Missing required fields: {[f for f in required_fields if f not in data]}")
+                else:
+                    self.log_test(f"IOC Enrichment - {case['name']}", False, 
+                                f"HTTP {response.status_code}", response.text)
+            except Exception as e:
+                self.log_test(f"IOC Enrichment - {case['name']}", False, f"Exception: {str(e)}")
+    
+    def test_correlation_queries(self):
+        """Test correlation query generation"""
+        
+        test_cases = [
+            {
+                "name": "Host-based Correlation (Splunk + Wazuh)",
+                "params": {
+                    "primary_tool": "splunk",
+                    "secondary_tools": ["wazuh"],
+                    "correlation_field": "host",
+                    "parameters": {
+                        "host": "workstation-01"
+                    }
+                }
+            },
+            {
+                "name": "User-based Correlation",
+                "params": {
+                    "primary_tool": "splunk",
+                    "secondary_tools": ["elasticsearch"],
+                    "correlation_field": "user",
+                    "parameters": {
+                        "user": "john.doe"
+                    }
+                }
+            },
+            {
+                "name": "IP-based Correlation",
+                "params": {
+                    "primary_tool": "splunk",
+                    "secondary_tools": ["wazuh", "elasticsearch"],
+                    "correlation_field": "ip",
+                    "parameters": {
+                        "ip": "192.168.1.50"
+                    }
+                }
+            },
+            {
+                "name": "Wazuh to Elasticsearch Correlation",
+                "params": {
+                    "primary_tool": "wazuh",
+                    "secondary_tools": ["elasticsearch"],
+                    "correlation_field": "host",
+                    "parameters": {
+                        "host": "server-01"
+                    }
+                }
+            }
+        ]
+        
+        for case in test_cases:
+            try:
+                response = self.session.post(f"{BACKEND_URL}/correlation", json=case["params"])
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Validate response structure
+                    required_fields = ['correlation_type', 'correlated_queries', 'join_logic', 'explanation']
+                    if all(field in data for field in required_fields):
+                        
+                        # Check if correlation query is generated
+                        correlated_queries = data['correlated_queries']
+                        if 'correlation_query' in correlated_queries and correlated_queries['correlation_query']:
+                            
+                            # Check if correlation field is mentioned in the query or join logic
+                            correlation_field = case['params']['correlation_field']
+                            query_contains_field = (correlation_field in correlated_queries['correlation_query'].lower() or 
+                                                  correlation_field in data['join_logic'].lower())
+                            
+                            if query_contains_field:
+                                self.log_test(f"Correlation - {case['name']}", True, 
+                                            f"Generated correlation query with {correlation_field} field")
+                            else:
+                                self.log_test(f"Correlation - {case['name']}", False, 
+                                            f"Correlation field '{correlation_field}' not found in query")
+                        else:
+                            self.log_test(f"Correlation - {case['name']}", False, 
+                                        "No correlation query generated")
+                    else:
+                        self.log_test(f"Correlation - {case['name']}", False, 
+                                    f"Missing required fields: {[f for f in required_fields if f not in data]}")
+                else:
+                    self.log_test(f"Correlation - {case['name']}", False, 
+                                f"HTTP {response.status_code}", response.text)
+            except Exception as e:
+                self.log_test(f"Correlation - {case['name']}", False, f"Exception: {str(e)}")
+    
+    def test_incident_types_endpoint(self):
+        """Test incident types endpoint"""
+        try:
+            response = self.session.get(f"{BACKEND_URL}/incident-types")
+            if response.status_code == 200:
+                data = response.json()
+                
+                if 'incident_types' in data:
+                    incident_types = data['incident_types']
+                    
+                    # Expected incident types based on the implementation
+                    expected_types = ['malware_infection', 'unauthorized_access', 'data_exfiltration', 
+                                    'privilege_escalation', 'lateral_movement']
+                    
+                    found_types = [incident['type'] for incident in incident_types]
+                    
+                    # Check if all expected types are present
+                    missing_types = [t for t in expected_types if t not in found_types]
+                    
+                    if not missing_types:
+                        # Validate structure of each incident type
+                        valid_structure = True
+                        for incident in incident_types:
+                            required_fields = ['type', 'name', 'description', 'steps']
+                            if not all(field in incident for field in required_fields):
+                                valid_structure = False
+                                break
+                        
+                        if valid_structure:
+                            self.log_test("Incident Types Endpoint", True, 
+                                        f"Retrieved {len(incident_types)} incident types with valid structure")
+                        else:
+                            self.log_test("Incident Types Endpoint", False, 
+                                        "Invalid structure in incident type data")
+                    else:
+                        self.log_test("Incident Types Endpoint", False, 
+                                    f"Missing expected incident types: {missing_types}")
+                else:
+                    self.log_test("Incident Types Endpoint", False, 
+                                "Response missing 'incident_types' field")
+            else:
+                self.log_test("Incident Types Endpoint", False, 
+                            f"HTTP {response.status_code}", response.text)
+        except Exception as e:
+            self.log_test("Incident Types Endpoint", False, f"Exception: {str(e)}")
+
     def test_error_handling(self):
         """Test error handling and validation"""
         
@@ -643,6 +943,32 @@ class CyberQueryMakerTester:
                 self.log_test("Error Handling - Delete Non-existent Template", False, f"Expected 404, got {response.status_code}")
         except Exception as e:
             self.log_test("Error Handling - Delete Non-existent Template", False, f"Exception: {str(e)}")
+        
+        # Test invalid incident type
+        try:
+            response = self.session.post(f"{BACKEND_URL}/incident-workflow", json={
+                "incident_type": "invalid_incident_type",
+                "context": {}
+            })
+            if response.status_code == 400:
+                self.log_test("Error Handling - Invalid Incident Type", True, "Properly rejected invalid incident type")
+            else:
+                self.log_test("Error Handling - Invalid Incident Type", False, f"Expected 400, got {response.status_code}")
+        except Exception as e:
+            self.log_test("Error Handling - Invalid Incident Type", False, f"Exception: {str(e)}")
+        
+        # Test invalid IOC type
+        try:
+            response = self.session.post(f"{BACKEND_URL}/ioc-enrichment", json={
+                "ioc_type": "invalid_ioc_type",
+                "ioc_value": "test_value"
+            })
+            if response.status_code == 400:
+                self.log_test("Error Handling - Invalid IOC Type", True, "Properly handled invalid IOC type")
+            else:
+                self.log_test("Error Handling - Invalid IOC Type", False, f"Expected 400, got {response.status_code}")
+        except Exception as e:
+            self.log_test("Error Handling - Invalid IOC Type", False, f"Exception: {str(e)}")
     
     def run_all_tests(self):
         """Run all backend tests"""
