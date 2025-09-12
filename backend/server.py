@@ -10,6 +10,8 @@ from typing import List, Dict, Any, Optional
 import uuid
 from datetime import datetime, timezone
 import json
+import hashlib
+import re
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -20,7 +22,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 # Create the main app without a prefix
-app = FastAPI(title="CyberQueryMaker API", version="1.0.0")
+app = FastAPI(title="CyberQueryMaker Advanced Investigation Platform", version="2.0.0")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -49,8 +51,487 @@ class QueryGenerateResponse(BaseModel):
     generated_query: str
     parameters: Dict[str, Any]
 
-# Query Generation Templates
+class IOCEnrichmentRequest(BaseModel):
+    ioc_type: str  # "hash", "ip", "domain", "url"
+    ioc_value: str
+    investigation_focus: Optional[str] = "general"  # "malware", "network", "user_activity"
+
+class IOCEnrichmentResponse(BaseModel):
+    ioc_type: str
+    ioc_value: str
+    generated_queries: Dict[str, str]  # tool -> query mapping
+    investigation_steps: List[Dict[str, Any]]
+    recommendations: List[str]
+
+class IncidentWorkflowRequest(BaseModel):
+    incident_type: str  # "malware_infection", "unauthorized_access", "data_exfiltration", etc.
+    context: Optional[Dict[str, Any]] = {}
+    custom_iocs: Optional[List[Dict[str, str]]] = []
+
+class IncidentWorkflowResponse(BaseModel):
+    incident_type: str
+    workflow_steps: List[Dict[str, Any]]
+    queries: Dict[str, List[Dict[str, str]]]  # step -> [{"tool": "tool_name", "query": "query_string"}]
+    timeline: List[Dict[str, Any]]
+
+class CorrelationRequest(BaseModel):
+    primary_tool: str
+    secondary_tools: List[str]
+    correlation_field: str  # "host", "user", "ip", "hash", "time_window"
+    parameters: Dict[str, Any]
+
+class CorrelationResponse(BaseModel):
+    correlation_type: str
+    correlated_queries: Dict[str, str]
+    join_logic: str
+    explanation: str
+
+# Advanced Investigation Templates
+class AdvancedInvestigationEngine:
+    
+    @staticmethod
+    def get_incident_workflows():
+        """Define investigation workflows for different incident types"""
+        return {
+            "malware_infection": {
+                "name": "Malware Infection Investigation",
+                "description": "Comprehensive malware investigation workflow",
+                "steps": [
+                    {
+                        "step": 1,
+                        "name": "Initial IOC Detection",
+                        "description": "Detect initial indicators of compromise",
+                        "tools": ["yara", "splunk", "wazuh"],
+                        "focus": "file_analysis"
+                    },
+                    {
+                        "step": 2,
+                        "name": "Process Tree Analysis",
+                        "description": "Analyze parent-child process relationships",
+                        "tools": ["wazuh", "splunk"],
+                        "focus": "process_analysis"
+                    },
+                    {
+                        "step": 3,
+                        "name": "Network Activity Investigation",
+                        "description": "Investigate suspicious network connections",
+                        "tools": ["splunk", "wireshark", "suricata"],
+                        "focus": "network_analysis"
+                    },
+                    {
+                        "step": 4,
+                        "name": "Lateral Movement Detection",
+                        "description": "Check for lateral movement patterns",
+                        "tools": ["splunk", "wazuh"],
+                        "focus": "lateral_movement"
+                    },
+                    {
+                        "step": 5,
+                        "name": "Impact Assessment",
+                        "description": "Assess the scope and impact of infection",
+                        "tools": ["splunk", "elasticsearch"],
+                        "focus": "impact_analysis"
+                    }
+                ]
+            },
+            "unauthorized_access": {
+                "name": "Unauthorized Access Investigation",
+                "description": "Investigation workflow for unauthorized access attempts",
+                "steps": [
+                    {
+                        "step": 1,
+                        "name": "Authentication Analysis",
+                        "description": "Analyze failed and successful authentication attempts",
+                        "tools": ["splunk", "wazuh"],
+                        "focus": "authentication"
+                    },
+                    {
+                        "step": 2,
+                        "name": "User Behavior Analysis",
+                        "description": "Investigate unusual user behavior patterns",
+                        "tools": ["splunk", "elasticsearch"],
+                        "focus": "user_behavior"
+                    },
+                    {
+                        "step": 3,
+                        "name": "Privilege Escalation Detection",
+                        "description": "Check for privilege escalation attempts",
+                        "tools": ["wazuh", "splunk"],
+                        "focus": "privilege_escalation"
+                    },
+                    {
+                        "step": 4,
+                        "name": "Access Pattern Analysis",
+                        "description": "Analyze access patterns and data touched",
+                        "tools": ["splunk", "elasticsearch"],
+                        "focus": "access_analysis"
+                    }
+                ]
+            },
+            "data_exfiltration": {
+                "name": "Data Exfiltration Investigation",
+                "description": "Investigation workflow for potential data theft",
+                "steps": [
+                    {
+                        "step": 1,
+                        "name": "Network Traffic Analysis",
+                        "description": "Analyze unusual outbound network traffic",
+                        "tools": ["wireshark", "splunk", "suricata"],
+                        "focus": "network_traffic"
+                    },
+                    {
+                        "step": 2,
+                        "name": "File Access Investigation",
+                        "description": "Investigate file access and transfer patterns",
+                        "tools": ["wazuh", "splunk"],
+                        "focus": "file_access"
+                    },
+                    {
+                        "step": 3,
+                        "name": "User Activity Timeline",
+                        "description": "Build timeline of user activities",
+                        "tools": ["splunk", "elasticsearch"],
+                        "focus": "user_timeline"
+                    },
+                    {
+                        "step": 4,
+                        "name": "Data Volume Analysis",
+                        "description": "Analyze data transfer volumes and destinations",
+                        "tools": ["splunk", "elasticsearch"],
+                        "focus": "data_volume"
+                    }
+                ]
+            },
+            "privilege_escalation": {
+                "name": "Privilege Escalation Investigation",
+                "description": "Investigation workflow for privilege escalation attempts",
+                "steps": [
+                    {
+                        "step": 1,
+                        "name": "Account Activity Analysis",
+                        "description": "Analyze account privilege changes and usage",
+                        "tools": ["wazuh", "splunk"],
+                        "focus": "account_analysis"
+                    },
+                    {
+                        "step": 2,
+                        "name": "Process Execution Analysis",
+                        "description": "Investigate processes running with elevated privileges",
+                        "tools": ["wazuh", "splunk"],
+                        "focus": "process_privileges"
+                    },
+                    {
+                        "step": 3,
+                        "name": "System Modification Detection",
+                        "description": "Check for unauthorized system modifications",
+                        "tools": ["wazuh", "splunk"],
+                        "focus": "system_changes"
+                    }
+                ]
+            },
+            "lateral_movement": {
+                "name": "Lateral Movement Investigation",
+                "description": "Investigation workflow for lateral movement detection",
+                "steps": [
+                    {
+                        "step": 1,
+                        "name": "Network Connection Analysis",
+                        "description": "Analyze internal network connections and patterns",
+                        "tools": ["wireshark", "splunk", "suricata"],
+                        "focus": "internal_network"
+                    },
+                    {
+                        "step": 2,
+                        "name": "Remote Access Investigation",
+                        "description": "Investigate remote access tools and sessions",
+                        "tools": ["splunk", "wazuh"],
+                        "focus": "remote_access"
+                    },
+                    {
+                        "step": 3,
+                        "name": "Credential Usage Analysis",
+                        "description": "Analyze credential usage across multiple systems",
+                        "tools": ["splunk", "wazuh"],
+                        "focus": "credential_analysis"
+                    }
+                ]
+            }
+        }
+    
+    @staticmethod
+    def generate_ioc_enrichment_queries(ioc_type: str, ioc_value: str, focus: str = "general") -> Dict[str, Any]:
+        """Generate queries for IOC enrichment across multiple tools"""
+        
+        queries = {}
+        steps = []
+        recommendations = []
+        
+        if ioc_type == "hash":
+            # File hash investigation
+            queries["yara"] = f'''rule IOC_Hash_Detection {{
+    meta:
+        description = "Detection rule for IOC hash {ioc_value}"
+        author = "CyberQueryMaker"
+        date = "{datetime.now().strftime('%Y-%m-%d')}"
+    
+    condition:
+        hash.sha256("{ioc_value}") or 
+        hash.md5("{ioc_value}") or
+        hash.sha1("{ioc_value}")
+}}'''
+            
+            queries["splunk"] = f'''index=ossec sourcetype=file_integrity 
+| search file.hash="{ioc_value}" OR file.md5="{ioc_value}" OR file.sha1="{ioc_value}" OR file.sha256="{ioc_value}"
+| table _time host file.path file.hash user process.name
+| sort -_time'''
+            
+            queries["wazuh"] = f'''<rule id="100300" level="10">
+  <description>Suspicious file hash detected: {ioc_value}</description>
+  <field name="file.hash">{ioc_value}</field>
+  <options>no_full_log</options>
+  <group>file_integrity,malware</group>
+</rule>'''
+            
+            queries["elasticsearch"] = f'''{{
+  "query": {{
+    "bool": {{
+      "should": [
+        {{"term": {{"file.hash.sha256": "{ioc_value}"}}}},
+        {{"term": {{"file.hash.md5": "{ioc_value}"}}}},
+        {{"term": {{"file.hash.sha1": "{ioc_value}"}}}}
+      ]
+    }}
+  }},
+  "sort": [{{"@timestamp": {{"order": "desc"}}}}]
+}}'''
+            
+            steps = [
+                {"step": 1, "action": "Search for file hash across all systems", "tool": "splunk"},
+                {"step": 2, "action": "Create YARA rule for ongoing detection", "tool": "yara"},
+                {"step": 3, "action": "Check file integrity logs", "tool": "wazuh"},
+                {"step": 4, "action": "Correlate with process execution", "tool": "elasticsearch"}
+            ]
+            
+            recommendations = [
+                "Check if hash appears in VirusTotal or threat intelligence feeds",
+                "Investigate parent processes that created this file",
+                "Look for network connections made by processes using this file",
+                "Check for similar hashes or file patterns on other systems"
+            ]
+        
+        elif ioc_type == "ip":
+            # IP address investigation
+            queries["wireshark"] = f'ip.addr == {ioc_value}'
+            
+            queries["splunk"] = f'''index=network_traffic 
+| search src_ip="{ioc_value}" OR dest_ip="{ioc_value}" OR ip="{ioc_value}"
+| table _time src_ip dest_ip src_port dest_port protocol bytes
+| sort -_time'''
+            
+            queries["suricata"] = f'''alert ip any any -> {ioc_value} any (msg:"Suspicious IP communication to {ioc_value}"; reference:url,internal_investigation; sid:1000100; rev:1;)'''
+            
+            queries["elasticsearch"] = f'''{{
+  "query": {{
+    "bool": {{
+      "should": [
+        {{"term": {{"source.ip": "{ioc_value}"}}}},
+        {{"term": {{"destination.ip": "{ioc_value}"}}}},
+        {{"term": {{"network.src_ip": "{ioc_value}"}}}},
+        {{"term": {{"network.dest_ip": "{ioc_value}"}}}}
+      ]
+    }}
+  }},
+  "aggs": {{
+    "unique_hosts": {{
+      "terms": {{"field": "host.name"}}
+    }}
+  }}
+}}'''
+            
+            steps = [
+                {"step": 1, "action": "Analyze network traffic to/from IP", "tool": "splunk"},
+                {"step": 2, "action": "Create network filter for packet analysis", "tool": "wireshark"},
+                {"step": 3, "action": "Set up detection rule for future connections", "tool": "suricata"},
+                {"step": 4, "action": "Check for connections across all hosts", "tool": "elasticsearch"}
+            ]
+            
+            recommendations = [
+                "Check IP reputation in threat intelligence feeds",
+                "Investigate geographic location and ASN of IP",
+                "Look for other IPs in same subnet or ASN",
+                "Check DNS resolutions for this IP"
+            ]
+        
+        elif ioc_type == "domain":
+            # Domain investigation
+            queries["wireshark"] = f'dns.qry.name == "{ioc_value}" or http.host == "{ioc_value}"'
+            
+            queries["splunk"] = f'''index=dns OR index=web_proxy OR index=network_traffic
+| search query="{ioc_value}" OR domain="{ioc_value}" OR host="{ioc_value}" OR url="*{ioc_value}*"
+| table _time src_ip query domain url action
+| sort -_time'''
+            
+            queries["suricata"] = f'''alert dns any any -> any 53 (msg:"Suspicious DNS query to {ioc_value}"; dns_query; content:"{ioc_value}"; sid:1000200; rev:1;)
+alert http any any -> any any (msg:"Suspicious HTTP connection to {ioc_value}"; http_host; content:"{ioc_value}"; sid:1000201; rev:1;)'''
+            
+            steps = [
+                {"step": 1, "action": "Search DNS queries and web traffic", "tool": "splunk"},
+                {"step": 2, "action": "Analyze network packets for domain", "tool": "wireshark"},
+                {"step": 3, "action": "Create detection rules for domain", "tool": "suricata"}
+            ]
+            
+            recommendations = [
+                "Check domain reputation and registration details",
+                "Look for subdomains and related domains",
+                "Investigate SSL certificates associated with domain",
+                "Check for DGA (Domain Generation Algorithm) patterns"
+            ]
+        
+        return {
+            "queries": queries,
+            "investigation_steps": steps,
+            "recommendations": recommendations
+        }
+    
+    @staticmethod
+    def generate_correlation_queries(primary_tool: str, secondary_tools: List[str], 
+                                   correlation_field: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate correlation queries between multiple tools"""
+        
+        if correlation_field == "host":
+            # Correlate by hostname/system
+            if primary_tool == "splunk" and "wazuh" in secondary_tools:
+                correlation_query = f'''
+# Primary Splunk Query
+index=security sourcetype=wineventlog host="{parameters.get('host', '*')}"
+| table _time host user process.name event_code
+| join host [
+    # Secondary Wazuh Query  
+    search index=wazuh rule.level>=5 host="{parameters.get('host', '*')}"
+    | table _time host rule.description rule.level
+]
+| sort -_time'''
+                
+                explanation = "Correlates Windows security events from Splunk with Wazuh security alerts for the same host"
+            
+            elif primary_tool == "wazuh" and "elasticsearch" in secondary_tools:
+                correlation_query = f'''
+# Elasticsearch correlation query
+{{
+  "query": {{
+    "bool": {{
+      "must": [
+        {{"term": {{"host.name": "{parameters.get('host', 'unknown')}"}}}},
+        {{"range": {{"@timestamp": {{"gte": "now-24h"}}}}}}
+      ]
+    }}
+  }},
+  "aggs": {{
+    "events_by_source": {{
+      "terms": {{"field": "event.module"}},
+      "aggs": {{
+        "event_timeline": {{
+          "date_histogram": {{"field": "@timestamp", "interval": "1h"}}
+        }}
+      }}
+    }}
+  }}
+}}'''
+                
+                explanation = "Correlates Wazuh alerts with Elasticsearch events by hostname for comprehensive host analysis"
+            
+            else:
+                correlation_query = f"# Basic host correlation between {primary_tool} and {secondary_tools}"
+                explanation = f"Correlating {primary_tool} with {secondary_tools} by host field"
+        
+        elif correlation_field == "user":
+            # Correlate by username
+            correlation_query = f'''
+index=security (sourcetype=wineventlog OR sourcetype=ossec) user="{parameters.get('user', '*')}"
+| table _time host user action source_ip process.name
+| join user [
+    search index=network_traffic user="{parameters.get('user', '*')}"
+    | table _time user src_ip dest_ip dest_port
+]
+| sort -_time'''
+            
+            explanation = "Correlates user authentication and system events with network activity for user behavior analysis"
+        
+        elif correlation_field == "ip":
+            # Correlate by IP address
+            correlation_query = f'''
+# Multi-tool IP correlation
+index=network_traffic src_ip="{parameters.get('ip', '*')}" OR dest_ip="{parameters.get('ip', '*')}"
+| table _time src_ip dest_ip dest_port protocol bytes
+| appendcols [
+    search index=wazuh srcip="{parameters.get('ip', '*')}" OR dstip="{parameters.get('ip', '*')}"
+    | table _time rule.description rule.level
+]
+| sort -_time'''
+            
+            explanation = "Correlates network traffic with security alerts for comprehensive IP analysis"
+        
+        else:
+            correlation_query = f"# Time-based correlation between {primary_tool} and {secondary_tools}"
+            explanation = f"Time-based correlation analysis"
+        
+        return {
+            "correlation_type": f"{primary_tool}_to_{secondary_tools}",
+            "correlated_queries": {
+                "correlation_query": correlation_query,
+                "primary_tool": primary_tool,
+                "secondary_tools": secondary_tools
+            },
+            "join_logic": f"JOIN ON {correlation_field}",
+            "explanation": explanation
+        }
+
+# Existing QueryGenerator class with enhancements
 class QueryGenerator:
+    @staticmethod
+    def generate_advanced_investigation_query(tool: str, investigation_type: str, parameters: Dict[str, Any]) -> str:
+        """Generate advanced investigation queries with context awareness"""
+        
+        if investigation_type == "process_analysis" and tool == "splunk":
+            return f'''index=security sourcetype=wineventlog EventCode=4688
+| search NewProcessName="*{parameters.get('process_name', '*')}*"
+| eval parent_process=coalesce(ParentProcessName, "unknown")
+| table _time host user NewProcessName parent_process CommandLine
+| join host, parent_process [
+    search index=security sourcetype=wineventlog EventCode=4688
+    | rename NewProcessName as parent_process
+    | table _time host parent_process user
+]
+| sort -_time
+| head 100'''
+        
+        elif investigation_type == "network_analysis" and tool == "wireshark":
+            return f'''(ip.addr == {parameters.get('ip', '0.0.0.0')} and tcp.port == {parameters.get('port', 80)}) or 
+(dns.qry.name contains "{parameters.get('domain', 'suspicious')}" and dns.flags.response == 1) or
+(http.request.method == "POST" and http.request.uri contains "{parameters.get('uri_pattern', 'login')}")'''
+        
+        elif investigation_type == "file_analysis" and tool == "yara":
+            return f'''rule Advanced_File_Investigation {{
+    meta:
+        description = "Advanced file analysis for {parameters.get('investigation_focus', 'malware')}"
+        author = "CyberQueryMaker Advanced"
+        date = "{datetime.now().strftime('%Y-%m-%d')}"
+    
+    strings:
+        $suspicious_string1 = "{parameters.get('string_pattern1', 'malicious')}"
+        $suspicious_string2 = "{parameters.get('string_pattern2', 'trojan')}"
+        $file_extension = ".{parameters.get('file_extension', 'exe')}"
+        
+    condition:
+        (any of ($suspicious_string*)) and 
+        (filesize < {parameters.get('max_size', '10MB')}) and
+        $file_extension
+}}'''
+        
+        else:
+            # Fall back to basic query generation
+            return QueryGenerator.generate_query(tool, parameters)
+    
     @staticmethod
     def generate_wireshark_query(params: Dict[str, Any]) -> str:
         """Generate Wireshark display filter"""
@@ -391,7 +872,142 @@ class QueryGenerator:
         
         return generators[tool](parameters)
 
-# API Routes
+# Advanced API Routes
+@api_router.post("/incident-workflow", response_model=IncidentWorkflowResponse)
+async def generate_incident_workflow(request: IncidentWorkflowRequest):
+    """Generate comprehensive investigation workflow for incident type"""
+    try:
+        workflows = AdvancedInvestigationEngine.get_incident_workflows()
+        
+        if request.incident_type not in workflows:
+            raise HTTPException(status_code=400, detail=f"Unsupported incident type: {request.incident_type}")
+        
+        workflow = workflows[request.incident_type]
+        
+        # Generate queries for each step
+        queries = {}
+        timeline = []
+        
+        for step in workflow["steps"]:
+            step_queries = []
+            
+            for tool in step["tools"]:
+                # Generate context-aware queries based on step focus
+                if step["focus"] == "file_analysis":
+                    params = {
+                        "investigation_focus": "malware",
+                        "file_extension": "exe",
+                        "max_size": "50MB"
+                    }
+                    if request.custom_iocs:
+                        for ioc in request.custom_iocs:
+                            if ioc["type"] == "hash":
+                                params["hash"] = ioc["value"]
+                    
+                    query = QueryGenerator.generate_advanced_investigation_query(tool, step["focus"], params)
+                    
+                elif step["focus"] == "process_analysis":
+                    params = {
+                        "process_name": request.context.get("suspicious_process", "*"),
+                        "parent_process": request.context.get("parent_process", "*")
+                    }
+                    query = QueryGenerator.generate_advanced_investigation_query(tool, step["focus"], params)
+                    
+                elif step["focus"] == "network_analysis":
+                    params = {
+                        "ip": request.context.get("suspicious_ip", "0.0.0.0"),
+                        "port": request.context.get("port", 80),
+                        "domain": request.context.get("suspicious_domain", "suspicious")
+                    }
+                    query = QueryGenerator.generate_advanced_investigation_query(tool, step["focus"], params)
+                    
+                else:
+                    # Generate basic query for the tool
+                    query = QueryGenerator.generate_query(tool, request.context)
+                
+                step_queries.append({
+                    "tool": tool,
+                    "query": query,
+                    "description": f"{tool.capitalize()} query for {step['description']}"
+                })
+            
+            queries[f"step_{step['step']}"] = step_queries
+            
+            # Add to timeline
+            timeline.append({
+                "step": step['step'],
+                "name": step['name'],
+                "description": step['description'],
+                "tools": step['tools'],
+                "estimated_time": "5-15 minutes",
+                "priority": "high" if step['step'] <= 2 else "medium"
+            })
+        
+        return IncidentWorkflowResponse(
+            incident_type=request.incident_type,
+            workflow_steps=workflow["steps"],
+            queries=queries,
+            timeline=timeline
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@api_router.post("/ioc-enrichment", response_model=IOCEnrichmentResponse)
+async def enrich_ioc(request: IOCEnrichmentRequest):
+    """Enrich IOC and generate investigation queries"""
+    try:
+        enrichment_data = AdvancedInvestigationEngine.generate_ioc_enrichment_queries(
+            request.ioc_type, 
+            request.ioc_value, 
+            request.investigation_focus
+        )
+        
+        return IOCEnrichmentResponse(
+            ioc_type=request.ioc_type,
+            ioc_value=request.ioc_value,
+            generated_queries=enrichment_data["queries"],
+            investigation_steps=enrichment_data["investigation_steps"],
+            recommendations=enrichment_data["recommendations"]
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@api_router.post("/correlation", response_model=CorrelationResponse)
+async def generate_correlation(request: CorrelationRequest):
+    """Generate correlation queries between multiple tools"""
+    try:
+        correlation_data = AdvancedInvestigationEngine.generate_correlation_queries(
+            request.primary_tool,
+            request.secondary_tools,
+            request.correlation_field,
+            request.parameters
+        )
+        
+        return CorrelationResponse(**correlation_data)
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@api_router.get("/incident-types")
+async def get_incident_types():
+    """Get available incident types for investigation workflows"""
+    workflows = AdvancedInvestigationEngine.get_incident_workflows()
+    
+    return {
+        "incident_types": [
+            {
+                "type": key,
+                "name": workflow["name"],
+                "description": workflow["description"],
+                "steps": len(workflow["steps"])
+            }
+            for key, workflow in workflows.items()
+        ]
+    }
+
+# Original API Routes (unchanged)
 @api_router.post("/generate-query", response_model=QueryGenerateResponse)
 async def generate_query(request: QueryGenerateRequest):
     """Generate a query/command for the specified tool"""

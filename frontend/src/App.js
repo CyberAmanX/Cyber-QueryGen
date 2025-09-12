@@ -5,7 +5,41 @@ import axios from "axios";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
-// Tool configurations
+// Incident Types Configuration
+const INCIDENT_TYPES = {
+  malware_infection: {
+    name: "🦠 Malware Infection",
+    description: "Comprehensive malware investigation workflow",
+    icon: "🦠",
+    color: "red"
+  },
+  unauthorized_access: {
+    name: "🔓 Unauthorized Access",
+    description: "Investigation workflow for unauthorized access attempts",
+    icon: "🔓",
+    color: "orange"
+  },
+  data_exfiltration: {
+    name: "📤 Data Exfiltration",
+    description: "Investigation workflow for potential data theft",
+    icon: "📤",
+    color: "purple"
+  },
+  privilege_escalation: {
+    name: "⬆️ Privilege Escalation",
+    description: "Investigation workflow for privilege escalation attempts",
+    icon: "⬆️",
+    color: "yellow"
+  },
+  lateral_movement: {
+    name: "↔️ Lateral Movement",
+    description: "Investigation workflow for lateral movement detection",
+    icon: "↔️",
+    color: "blue"
+  }
+};
+
+// Tool configurations (existing)
 const TOOL_CONFIGS = {
   wireshark: {
     name: "Wireshark",
@@ -124,12 +158,13 @@ const Navigation = ({ activeView, setActiveView }) => (
         <div className="flex items-center">
           <h1 className="text-2xl font-bold text-white flex items-center">
             <span className="text-3xl mr-2">🔐</span>
-            CyberQueryMaker
+            CyberQueryMaker <span className="text-sm bg-blue-600 px-2 py-1 rounded ml-2">Advanced</span>
           </h1>
         </div>
         <div className="flex space-x-4">
           {[
-            { key: 'builder', label: 'Build Query', icon: '⚡' },
+            { key: 'investigation', label: 'Investigation Mode', icon: '🕵️' },
+            { key: 'builder', label: 'Query Builder', icon: '⚡' },
             { key: 'saved', label: 'Saved Queries', icon: '💾' },
             { key: 'knowledge', label: 'Knowledge Base', icon: '📚' }
           ].map(item => (
@@ -246,6 +281,306 @@ const FieldRenderer = ({ field, value, onChange, prefix = '' }) => {
   }
 };
 
+// Advanced Investigation Mode
+const InvestigationMode = () => {
+  const [activeMode, setActiveMode] = useState('incident');
+  const [selectedIncident, setSelectedIncident] = useState('');
+  const [workflowData, setWorkflowData] = useState(null);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [iocData, setIocData] = useState({ type: '', value: '' });
+  const [iocResults, setIocResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const generateIncidentWorkflow = async () => {
+    if (!selectedIncident) return;
+
+    setLoading(true);
+    try {
+      const response = await axios.post(`${API}/incident-workflow`, {
+        incident_type: selectedIncident,
+        context: {},
+        custom_iocs: []
+      });
+      setWorkflowData(response.data);
+      setCurrentStep(0);
+    } catch (error) {
+      console.error('Error generating workflow:', error);
+      alert('Error generating investigation workflow');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const enrichIOC = async () => {
+    if (!iocData.type || !iocData.value) return;
+
+    setLoading(true);
+    try {
+      const response = await axios.post(`${API}/ioc-enrichment`, {
+        ioc_type: iocData.type,
+        ioc_value: iocData.value,
+        investigation_focus: 'general'
+      });
+      setIocResults(response.data);
+    } catch (error) {
+      console.error('Error enriching IOC:', error);
+      alert('Error enriching IOC');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      {/* Mode Selection */}
+      <div className="mb-8">
+        <div className="flex space-x-4 justify-center">
+          <button
+            onClick={() => setActiveMode('incident')}
+            className={`px-6 py-3 rounded-lg font-medium flex items-center space-x-2 ${
+              activeMode === 'incident' 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            <span>🕵️</span>
+            <span>Incident Investigation</span>
+          </button>
+          <button
+            onClick={() => setActiveMode('ioc')}
+            className={`px-6 py-3 rounded-lg font-medium flex items-center space-x-2 ${
+              activeMode === 'ioc' 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+          >
+            <span>🔍</span>
+            <span>IOC Enrichment</span>
+          </button>
+        </div>
+      </div>
+
+      {activeMode === 'incident' && (
+        <div className="space-y-8">
+          {/* Incident Type Selection */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">🕵️ Select Investigation Type</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              {Object.entries(INCIDENT_TYPES).map(([key, incident]) => (
+                <button
+                  key={key}
+                  onClick={() => setSelectedIncident(key)}
+                  className={`p-4 rounded-lg border-2 text-left transition-all ${
+                    selectedIncident === key
+                      ? 'border-blue-500 bg-blue-50 shadow-md'
+                      : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3 mb-2">
+                    <span className="text-2xl">{incident.icon}</span>
+                    <h3 className="font-semibold text-gray-900">{incident.name}</h3>
+                  </div>
+                  <p className="text-sm text-gray-600">{incident.description}</p>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={generateIncidentWorkflow}
+              disabled={!selectedIncident || loading}
+              className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? '⏳ Generating Workflow...' : '🚀 Generate Investigation Workflow'}
+            </button>
+          </div>
+
+          {/* Workflow Steps */}
+          {workflowData && (
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">
+                📋 Investigation Workflow: {INCIDENT_TYPES[selectedIncident]?.name}
+              </h2>
+
+              {/* Step Navigation */}
+              <div className="flex space-x-2 mb-6 overflow-x-auto">
+                {workflowData.workflow_steps.map((step, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentStep(index)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
+                      currentStep === index
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    Step {step.step}: {step.name}
+                  </button>
+                ))}
+              </div>
+
+              {/* Current Step Details */}
+              {workflowData.workflow_steps[currentStep] && (
+                <div className="space-y-6">
+                  <div className="border-l-4 border-blue-500 pl-4">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {workflowData.workflow_steps[currentStep].name}
+                    </h3>
+                    <p className="text-gray-600">{workflowData.workflow_steps[currentStep].description}</p>
+                    <div className="flex space-x-2 mt-2">
+                      {workflowData.workflow_steps[currentStep].tools.map(tool => (
+                        <span key={tool} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {TOOL_CONFIGS[tool]?.icon} {TOOL_CONFIGS[tool]?.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Queries for Current Step */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold text-gray-900">Generated Queries</h4>
+                    {workflowData.queries[`step_${workflowData.workflow_steps[currentStep].step}`]?.map((queryData, index) => (
+                      <div key={index} className="bg-gray-50 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <h5 className="font-medium text-gray-900">
+                            {TOOL_CONFIGS[queryData.tool]?.icon} {TOOL_CONFIGS[queryData.tool]?.name}
+                          </h5>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(queryData.query)}
+                            className="text-blue-600 hover:text-blue-800 text-sm"
+                          >
+                            📋 Copy
+                          </button>
+                        </div>
+                        <div className="bg-gray-900 rounded p-3 overflow-auto">
+                          <pre className="text-green-400 text-sm font-mono whitespace-pre-wrap">
+                            {queryData.query}
+                          </pre>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeMode === 'ioc' && (
+        <div className="space-y-8">
+          {/* IOC Input */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">🔍 IOC Enrichment</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">IOC Type</label>
+                <select
+                  value={iocData.type}
+                  onChange={(e) => setIocData({...iocData, type: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                >
+                  <option value="">Select IOC Type</option>
+                  <option value="hash">File Hash</option>
+                  <option value="ip">IP Address</option>
+                  <option value="domain">Domain</option>
+                  <option value="url">URL</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">IOC Value</label>
+                <input
+                  type="text"
+                  value={iocData.value}
+                  onChange={(e) => setIocData({...iocData, value: e.target.value})}
+                  placeholder="Enter IOC value..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={enrichIOC}
+                  disabled={!iocData.type || !iocData.value || loading}
+                  className="w-full bg-blue-600 text-white py-2 px-4 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading ? '⏳ Enriching...' : '🔍 Enrich IOC'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* IOC Results */}
+          {iocResults && (
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">
+                📊 IOC Analysis Results: {iocResults.ioc_value}
+              </h2>
+
+              {/* Generated Queries */}
+              <div className="space-y-4 mb-8">
+                <h3 className="text-lg font-semibold text-gray-900">Generated Investigation Queries</h3>
+                {Object.entries(iocResults.generated_queries).map(([tool, query]) => (
+                  <div key={tool} className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium text-gray-900">
+                        {TOOL_CONFIGS[tool]?.icon} {TOOL_CONFIGS[tool]?.name}
+                      </h4>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(query)}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        📋 Copy
+                      </button>
+                    </div>
+                    <div className="bg-gray-900 rounded p-3 overflow-auto">
+                      <pre className="text-green-400 text-sm font-mono whitespace-pre-wrap">
+                        {query}
+                      </pre>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Investigation Steps */}
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">📋 Investigation Steps</h3>
+                <div className="space-y-3">
+                  {iocResults.investigation_steps.map((step, index) => (
+                    <div key={index} className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
+                      <span className="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-medium">
+                        {step.step}
+                      </span>
+                      <div>
+                        <p className="font-medium text-gray-900">{step.action}</p>
+                        <p className="text-sm text-gray-600">Tool: {TOOL_CONFIGS[step.tool]?.name}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Recommendations */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">💡 Investigation Recommendations</h3>
+                <div className="space-y-2">
+                  {iocResults.recommendations.map((recommendation, index) => (
+                    <div key={index} className="flex items-start space-x-2 p-3 bg-yellow-50 rounded-lg">
+                      <span className="text-yellow-600 mt-0.5">💡</span>
+                      <p className="text-gray-700">{recommendation}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Original Query Builder (simplified for space, keeping the same functionality)
 const QueryBuilder = () => {
   const [selectedTool, setSelectedTool] = useState('');
   const [parameters, setParameters] = useState({});
@@ -704,12 +1039,13 @@ const KnowledgeBase = () => {
 };
 
 function App() {
-  const [activeView, setActiveView] = useState('builder');
+  const [activeView, setActiveView] = useState('investigation');
 
   return (
     <div className="min-h-screen bg-gray-100">
       <Navigation activeView={activeView} setActiveView={setActiveView} />
       
+      {activeView === 'investigation' && <InvestigationMode />}
       {activeView === 'builder' && <QueryBuilder />}
       {activeView === 'saved' && <SavedQueries />}
       {activeView === 'knowledge' && <KnowledgeBase />}
